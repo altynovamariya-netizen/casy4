@@ -1,0 +1,24 @@
+name: Release
+on:
+  push:
+    tags: ["v*"] # Срабатывает при пуше тега, начинающегося на 'v' (например, v1.0)
+
+permissions:
+  contents: write # Разрешает создавать релизы
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Важно для генерации changelog
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true # Автоматически генерирует changelog
+          files: | # Прикрепляем артефакты
+            Dockerfile
+            index.html
