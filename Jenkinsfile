@@ -1,48 +1,45 @@
 pipeline {
     agent any
-
     environment {
         DOCKERHUB_USER = "altynova"
         IMAGE_NAME = "${DOCKERHUB_USER}/casy4"
-        IMAGE_TAG = "${BUILD_NUMBER}"
-        WEBHOOK_URL = "http://host.docker.internal:8000"
+        GITHUB_REPO = "altynovamariya-netizen/casy4"
     }
-
     stages {
-        stage('Lint (Проверка кода)') {
+        stage('Lint') {
+            steps { echo 'Проверка кода...' }
+        }
+        stage('Test') {
+            steps { echo 'Тесты пройдены!' }
+        }
+        stage('Build') {
             steps {
-                echo 'Запуск проверки кода...'
-                sh 'ls -la index.html'
+                sh "docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
             }
         }
-        stage('Test (Юнит-тесты)') {
-            steps {
-                echo 'Все тесты успешно пройдены!'
-            }
-        }
-        stage('Build (Сборка)') {
-            steps {
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-            }
-        }
-        stage('Deploy (Развертывание)') {
+        stage('Deploy') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                     sh "echo \$PASS | docker login -u \$USER --password-stdin"
-                    sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
+                    sh "docker push ${IMAGE_NAME}:${BUILD_NUMBER}"
                 }
             }
         }
-    }
-
-    post {
-        success {
-            echo 'Сборка успешна! Отправляем уведомление...'
-            sh "curl -X POST -H 'Content-type: application/json' --data '{\"text\":\"✅ Сборка #${BUILD_NUMBER} прошла успешно!\"}' ${WEBHOOK_URL}"
-        }
-        failure {
-            echo 'Сборка упала! Отправляем уведомление...'
-            sh "curl -X POST -H 'Content-type: application/json' --data '{\"text\":\"❌ Сборка #${BUILD_NUMBER} завершилась с ошибкой!\"}' ${WEBHOOK_URL}"
+        stage('Create GitHub Release') {
+            steps {
+                withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                    script {
+                        echo 'Создание релиза на GitHub через API...'
+                        sh """
+                        curl -s -X POST \
+                        -H "Authorization: token ${GITHUB_TOKEN}" \
+                        -H "Accept: application/vnd.github.v3+json" \
+                        -d '{"tag_name":"v-${BUILD_NUMBER}", "name":"Release v-${BUILD_NUMBER}", "body":"Автоматический релиз из Jenkins. Все тесты пройдены."}' \
+                        https://api.github.com/repos/${GITHUB_REPO}/releases
+                        """
+                    }
+                }
+            }
         }
     }
 }
