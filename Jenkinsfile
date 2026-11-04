@@ -12,6 +12,29 @@ pipeline {
         stage('Test') {
             steps { echo 'Тесты пройдены!' }
         }
+        
+        // --- НОВАЯ СТАДИЯ ДЛЯ КЕЙСА 9 ---
+        stage('SonarQube Analysis') {
+            agent {
+                docker { 
+                    image 'sonarsource/sonar-scanner-cli:latest' 
+                    reuseNode true
+                }
+            }
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    sh """
+                    sonar-scanner \
+                      -Dsonar.projectKey=casy9 \
+                      -Dsonar.sources=. \
+                      -Dsonar.host.url=http://host.docker.internal:9000 \
+                      -Dsonar.login=\${SONAR_TOKEN}
+                    """
+                }
+            }
+        }
+        // -------------------------------
+
         stage('Build') {
             steps {
                 sh "docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
@@ -29,12 +52,11 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                     script {
-                        echo 'Создание релиза на GitHub через API...'
                         sh """
                         curl -s -X POST \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Accept: application/vnd.github.v3+json" \
-                        -d '{"tag_name":"v-${BUILD_NUMBER}", "name":"Release v-${BUILD_NUMBER}", "body":"Автоматический релиз из Jenkins. Все тесты пройдены."}' \
+                        -d '{"tag_name":"v-${BUILD_NUMBER}", "name":"Release v-${BUILD_NUMBER}", "body":"Автоматический релиз из Jenkins."}' \
                         https://api.github.com/repos/${GITHUB_REPO}/releases
                         """
                     }
