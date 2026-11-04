@@ -13,27 +13,20 @@ pipeline {
             steps { echo 'Тесты пройдены!' }
         }
         
-        // --- НОВАЯ СТАДИЯ ДЛЯ КЕЙСА 9 ---
         stage('SonarQube Analysis') {
-            agent {
-                docker { 
-                    image 'sonarsource/sonar-scanner-cli:latest' 
-                    reuseNode true
-                }
-            }
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     sh """
-                    sonar-scanner \
-                      -Dsonar.projectKey=casy9 \
-                      -Dsonar.sources=. \
-                      -Dsonar.host.url=http://host.docker.internal:9000 \
-                      -Dsonar.login=\${SONAR_TOKEN}
+                    docker run --rm \
+                      -e SONAR_HOST_URL="http://host.docker.internal:9000" \
+                      -e SONAR_LOGIN="${SONAR_TOKEN}" \
+                      -v "\$(pwd):/usr/src" \
+                      sonarsource/sonar-scanner-cli \
+                      -Dsonar.projectKey=casy9
                     """
                 }
             }
         }
-        // -------------------------------
 
         stage('Build') {
             steps {
@@ -65,3 +58,5 @@ pipeline {
         }
     }
 }
+
+
