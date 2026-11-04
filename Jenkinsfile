@@ -36,26 +36,32 @@ pipeline {
         stage('Database Migration') {
     steps {
         sh '''
-            echo "Запуск временной базы данных PostgreSQL..."
+            echo "Очистка старых контейнеров (если остались)..."
+            docker rm -f test-db || true
+            docker rm -f flyway-tmp || true
+
+            echo "Запуск временной базы данных..."
             docker run -d --name test-db -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -e POSTGRES_DB=mydb -p 5433:5432 postgres:15-alpine
             
             echo "Ожидание запуска базы данных..."
             sleep 10
             
-            echo "Создаем контейнер Flyway и копируем туда миграции..."
-            docker create --name flyway-tmp flyway/flyway
+            echo "Создаем контейнер Flyway..."
+            docker create --name flyway-tmp \
+              -e FLYWAY_URL=jdbc:postgresql://host.docker.internal:5433/mydb \
+              -e FLYWAY_USER=user \
+              -e FLYWAY_PASSWORD=password \
+              flyway/flyway migrate
+            
+            echo "Копируем файлы миграции из Jenkins в контейнер..."
             docker cp db/migration/. flyway-tmp:/flyway/sql
             
-            echo "Применение миграций..."
-            docker start -a flyway-tmp migrate \
-              -url=jdbc:postgresql://host.docker.internal:5433/mydb \
-              -user=user \
-              -password=password
+            echo "Запускаем Flyway..."
+            docker start -a flyway-tmp
             
             echo "Очистка..."
             docker rm -f flyway-tmp
-            docker stop test-db
-            docker rm test-db
+            docker rm -f test-db
         '''
     }
 }
