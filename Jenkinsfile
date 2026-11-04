@@ -34,29 +34,31 @@ pipeline {
         
         // --- НОВАЯ СТАДИЯ ДЛЯ КЕЙСА 10 ---
         stage('Database Migration') {
-            steps {
-                sh '''
-                    echo "Запуск временной базы данных PostgreSQL..."
-                    docker run -d --name test-db -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -e POSTGRES_DB=mydb -p 5433:5432 postgres:15-alpine
-                    
-                    echo "Ожидание запуска базы данных..."
-                    sleep 10
-                    
-                    echo "Применение миграций через Flyway..."
-                    docker run --rm \
-                      -v "$(pwd)/db/migration:/flyway/sql" \
-                      flyway/flyway \
-                      -url=jdbc:postgresql://host.docker.internal:5433/mydb \
-                      -user=user \
-                      -password=password \
-                      migrate
-                      
-                    echo "Остановка и удаление временной базы данных..."
-                    docker stop test-db
-                    docker rm test-db
-                '''
-            }
-        }
+    steps {
+        sh '''
+            echo "Запуск временной базы данных PostgreSQL..."
+            docker run -d --name test-db -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -e POSTGRES_DB=mydb -p 5433:5432 postgres:15-alpine
+            
+            echo "Ожидание запуска базы данных..."
+            sleep 10
+            
+            echo "Создаем контейнер Flyway и копируем туда миграции..."
+            docker create --name flyway-tmp flyway/flyway
+            docker cp db/migration/. flyway-tmp:/flyway/sql
+            
+            echo "Применение миграций..."
+            docker start -a flyway-tmp migrate \
+              -url=jdbc:postgresql://host.docker.internal:5433/mydb \
+              -user=user \
+              -password=password
+            
+            echo "Очистка..."
+            docker rm -f flyway-tmp
+            docker stop test-db
+            docker rm test-db
+        '''
+    }
+}
         // ---------------------------------
 
         stage('Deploy') {
