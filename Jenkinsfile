@@ -12,27 +12,53 @@ pipeline {
         stage('Test') {
             steps { echo 'Тесты пройдены!' }
         }
-        
         stage('SonarQube Analysis') {
-    steps {
-        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-            sh '''
-            docker run --rm \
-              -e SONAR_HOST_URL="http://host.docker.internal:9000" \
-              -e SONAR_TOKEN="${SONAR_TOKEN}" \
-              -v "$(pwd):/usr/src" \
-              sonarsource/sonar-scanner-cli \
-              -Dsonar.projectKey=casy9
-            '''
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                    docker run --rm \
+                      -e SONAR_HOST_URL="http://host.docker.internal:9000" \
+                      -e SONAR_TOKEN="${SONAR_TOKEN}" \
+                      -v "$(pwd):/usr/src" \
+                      sonarsource/sonar-scanner-cli \
+                      -Dsonar.projectKey=casy9
+                    '''
+                }
+            }
         }
-    }
-}
-
         stage('Build') {
             steps {
                 sh "docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
             }
         }
+        
+        // --- НОВАЯ СТАДИЯ ДЛЯ КЕЙСА 10 ---
+        stage('Database Migration') {
+            steps {
+                sh '''
+                    echo "Запуск временной базы данных PostgreSQL..."
+                    docker run -d --name test-db -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -e POSTGRES_DB=mydb -p 5433:5432 postgres:15-alpine
+                    
+                    echo "Ожидание запуска базы данных..."
+                    sleep 10
+                    
+                    echo "Применение миграций через Flyway..."
+                    docker run --rm \
+                      -v "$(pwd)/db/migration:/flyway/sql" \
+                      flyway/flyway \
+                      -url=jdbc:postgresql://host.docker.internal:5433/mydb \
+                      -user=user \
+                      -password=password \
+                      migrate
+                      
+                    echo "Остановка и удаление временной базы данных..."
+                    docker stop test-db
+                    docker rm test-db
+                '''
+            }
+        }
+        // ---------------------------------
+
         stage('Deploy') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
@@ -58,5 +84,4 @@ pipeline {
         }
     }
 }
-
 
